@@ -1,8 +1,9 @@
+# Builder Stage
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+# Install dependencies for Prisma
+RUN apk add --no-cache openssl libc6-compat
 
 COPY package*.json ./
 RUN npm ci --frozen-lockfile
@@ -12,11 +13,11 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# Production
+# Runner Stage
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl libc6-compat
 
 ENV NODE_ENV=production
 ENV PORT=8080
@@ -29,7 +30,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Prisma
+# Prisma Client
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
