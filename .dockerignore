@@ -1,0 +1,42 @@
+# Dependencies
+node_modules
+
+# Build outputs
+.next
+out
+
+# Environment variables
+.env
+.env*.local
+.env*.production
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Misc
+README.md
+LICENSE
+*.md
+.vscode
+.idea
+.DS_Store
+**/.git
+**/.env
+
+# Testing
+coverage
+__tests__
+jest.config.js
+
+# Development files
+tsconfig.tsbuildinfo

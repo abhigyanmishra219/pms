@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     // JWT token banao
-    const token = createToken({ id: staff.id })
+    const token = createToken(staff.id )
 
     const res = NextResponse.json({
       success: true,
