@@ -4,42 +4,26 @@ import prismaclient from "@/lib/prisma";
 import { createToken } from "@/lib/jwt";
 import { verifyWebAuthnLogin } from "@/lib/webauthn";
 
-
 export async function POST(req: NextRequest) {
   try {
     const { credentialId, authenticatorData, clientDataJSON, signature } = await req.json();
 
-    if (!credentialId || !authenticatorData || !clientDataJSON || !signature) {
-      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
-    }
-
     const staff = await prismaclient.staff.findFirst({
-      where: { credentialId },
+      where: { credentialId }
     });
 
     if (!staff || !staff.isActive) {
-      return NextResponse.json({ error: "Staff not found or inactive" }, { status: 401 });
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // Extract challenge from setupToken
     const expectedChallenge = staff.setupToken?.replace("login-challenge:", "");
 
     if (!expectedChallenge) {
-      return NextResponse.json({ error: "Challenge expired. Try again." }, { status: 401 });
+      return NextResponse.json({ error: "Session expired. Try again." }, { status: 401 });
     }
 
-    // Verify WebAuthn signature
     const isValid = await verifyWebAuthnLogin(
-      {
-        id: credentialId,
-        rawId: credentialId,
-        response: {
-          authenticatorData: new Uint8Array(authenticatorData),
-          clientDataJSON: new Uint8Array(clientDataJSON),
-          signature: new Uint8Array(signature),
-        },
-        type: "public-key",
-      },
+      { id: credentialId, rawId: credentialId, response: { authenticatorData, clientDataJSON, signature }, type: "public-key" },
       expectedChallenge,
       process.env.NEXT_PUBLIC_RP_ID || "localhost"
     );
@@ -48,7 +32,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Fingerprint verification failed" }, { status: 401 });
     }
 
-    // Create JWT
     const token = createToken(staff.id);
 
     const response = NextResponse.json({
@@ -66,13 +49,12 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
     });
 
-    // Clear challenge
     await prismaclient.staff.update({
       where: { id: staff.id },
-      data: { setupToken: null },
+      data: { setupToken: null }
     });
 
     return response;

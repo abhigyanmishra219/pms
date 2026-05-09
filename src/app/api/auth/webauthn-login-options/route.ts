@@ -31,7 +31,6 @@ export async function POST(req: NextRequest) {
       userVerification: "required",
       allowCredentials: allStaff.map((staff) => ({
         type: "public-key",
-        // Convert base64 string to ArrayBuffer (This was the missing part)
         id: Uint8Array.from(atob(staff.credentialId!), (c) => c.charCodeAt(0)),
         transports: ["internal", "hybrid"] as const,
       }))

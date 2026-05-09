@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+type Status = "idle" | "loading" | "error" | "success";
+
 export default function StaffLoginPage() {
-  const [status, setStatus] = useState<"idle" | "loading" | "error" | "success">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState<string>("");
   const router = useRouter();
 
   const startFingerprintLogin = async () => {
@@ -13,16 +15,18 @@ export default function StaffLoginPage() {
     setErrorMsg("");
 
     try {
-      const res = await fetch("/api/auth/webauthn-login-options", {
+      // 1. Get challenge and credentials from server
+      const optionsRes = await fetch("/api/auth/webauthn-login-options", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
       });
 
-      const options = await res.json();
+      const options = await optionsRes.json();
 
-      if (!res.ok) throw new Error(options.error || "Failed to start login");
+      if (!optionsRes.ok) {
+        throw new Error(options.error || "Failed to prepare fingerprint login");
+      }
 
-      // Trigger Fingerprint Prompt
+      // 2. Trigger Fingerprint / Passkey Prompt
       const credential = await navigator.credentials.get({
         publicKey: {
           challenge: Uint8Array.from(atob(options.challenge), (c) => c.charCodeAt(0)),
@@ -31,11 +35,13 @@ export default function StaffLoginPage() {
           allowCredentials: options.allowCredentials,
           userVerification: "required",
         },
-      }) as PublicKeyCredential;
+      }) as PublicKeyCredential | null;
 
-      if (!credential) throw new Error("No credential returned");
+      if (!credential) {
+        throw new Error("Fingerprint authentication was cancelled or failed");
+      }
 
-      // Send for verification
+      // 3. Send response for verification
       const verifyRes = await fetch("/api/auth/webauthn-login-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,13 +57,15 @@ export default function StaffLoginPage() {
 
       if (data.success) {
         setStatus("success");
-        setTimeout(() => router.push("/staff/dashboard"), 800);
+        setTimeout(() => {
+          router.push("/staff/dashboard");
+        }, 800);
       } else {
         throw new Error(data.error || "Verification failed");
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Fingerprint login failed. Try again.");
+      setErrorMsg(err.message || "Could not access fingerprint sensor. Please try again.");
       setStatus("error");
     }
   };
@@ -95,7 +103,14 @@ export default function StaffLoginPage() {
             onClick={startFingerprintLogin}
             disabled={status === "loading" || status === "success"}
           >
-            {status === "loading" ? "🔄 Verifying Fingerprint..." : "🔐 Verify with Fingerprint"}
+            {status === "loading" ? (
+              <>
+                <span className="spinner" />
+                Verifying Fingerprint...
+              </>
+            ) : (
+              "🔐 Verify with Fingerprint"
+            )}
           </button>
 
           {status === "error" && <p className="err-text">{errorMsg}</p>}
@@ -108,13 +123,12 @@ export default function StaffLoginPage() {
       </main>
 
       <style jsx>{`
-        /* Keep your existing beautiful styles here */
-        .root { min-height: 100vh; background: #04080f; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-        .card { width: 430px; background: rgba(10,18,30,0.95); border-radius: 20px; padding: 20px; text-align: center; }
+        .root { min-height: 100vh; background: #04080f; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 20px; }
+        .card { width: 430px; background: rgba(10,18,30,0.95); border-radius: 20px; padding: 20px; text-align: center; box-shadow: 0 40px 100px rgba(0,0,0,0.8); }
         .btn { width: 100%; padding: 14px; background: #6366f1; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }
         .btn-loading { opacity: 0.7; cursor: not-allowed; }
-        .err-text { color: #ef4444; margin-top: 12px; }
-        .success-text { color: #10b981; margin-top: 12px; }
+        .err-text { color: #ef4444; margin-top: 12px; text-align: center; }
+        .success-text { color: #10b981; margin-top: 12px; text-align: center; }
       `}</style>
     </div>
   );
