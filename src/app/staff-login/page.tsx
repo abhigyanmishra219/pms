@@ -3,11 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Status = "idle" | "loading" | "error" | "success";
-
 export default function StaffLoginPage() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error" | "success">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
   const startFingerprintLogin = async () => {
@@ -15,33 +13,29 @@ export default function StaffLoginPage() {
     setErrorMsg("");
 
     try {
-      // Step 1: Get login options (challenge + credentials)
-      const optionsRes = await fetch("/api/auth/webauthn-login-options", {
+      const res = await fetch("/api/auth/webauthn-login-options", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
 
-      const options = await optionsRes.json();
+      const options = await res.json();
 
-      if (!optionsRes.ok) {
-        throw new Error(options.error || "Failed to get login options");
-      }
+      if (!res.ok) throw new Error(options.error || "Failed to start login");
 
-      // Step 2: Ask browser for fingerprint
+      // Trigger Fingerprint Prompt
       const credential = await navigator.credentials.get({
         publicKey: {
-          challenge: Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0)),
+          challenge: Uint8Array.from(atob(options.challenge), (c) => c.charCodeAt(0)),
           timeout: options.timeout,
           rpId: options.rpId,
           allowCredentials: options.allowCredentials,
-          userVerification: options.userVerification,
+          userVerification: "required",
         },
-      }) as PublicKeyCredential | null;
+      }) as PublicKeyCredential;
 
-      if (!credential) {
-        throw new Error("Authentication failed or cancelled");
-      }
+      if (!credential) throw new Error("No credential returned");
 
-      // Step 3: Send credential to verify
+      // Send for verification
       const verifyRes = await fetch("/api/auth/webauthn-login-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,23 +51,19 @@ export default function StaffLoginPage() {
 
       if (data.success) {
         setStatus("success");
-        setTimeout(() => {
-          router.push("/staff/dashboard");
-        }, 800);
+        setTimeout(() => router.push("/staff/dashboard"), 800);
       } else {
         throw new Error(data.error || "Verification failed");
       }
-
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Fingerprint login failed");
+      setErrorMsg(err.message || "Fingerprint login failed. Try again.");
       setStatus("error");
     }
   };
 
   return (
     <div className="root">
-      {/* Your existing styles remain the same */}
       <div className="bg-noise" />
       <div className="orb orb-1" />
       <div className="orb orb-2" />
@@ -101,29 +91,15 @@ export default function StaffLoginPage() {
 
         <div className="field-wrap">
           <button
-            className={`btn ${status === "loading" ? "btn-loading" : ""} ${status === "success" ? "btn-success" : ""}`}
+            className={`btn ${status === "loading" ? "btn-loading" : ""}`}
             onClick={startFingerprintLogin}
             disabled={status === "loading" || status === "success"}
           >
-            {status === "loading" ? (
-              <>
-                <span className="spinner" />
-                Verifying Fingerprint...
-              </>
-            ) : status === "success" ? (
-              "Login Successful ✓"
-            ) : (
-              <>
-                🔐 Verify with Fingerprint
-              </>
-            )}
+            {status === "loading" ? "🔄 Verifying Fingerprint..." : "🔐 Verify with Fingerprint"}
           </button>
 
-          {status === "error" && (
-            <p className="err-text" style={{ textAlign: "center", marginTop: "12px" }}>
-              {errorMsg}
-            </p>
-          )}
+          {status === "error" && <p className="err-text">{errorMsg}</p>}
+          {status === "success" && <p className="success-text">✅ Login Successful! Redirecting...</p>}
         </div>
 
         <p className="hint">
@@ -131,8 +107,15 @@ export default function StaffLoginPage() {
         </p>
       </main>
 
-      {/* Keep your existing styles */}
-      <style jsx>{`/* Your existing styles here */`}</style>
+      <style jsx>{`
+        /* Keep your existing beautiful styles here */
+        .root { min-height: 100vh; background: #04080f; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .card { width: 430px; background: rgba(10,18,30,0.95); border-radius: 20px; padding: 20px; text-align: center; }
+        .btn { width: 100%; padding: 14px; background: #6366f1; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .btn-loading { opacity: 0.7; cursor: not-allowed; }
+        .err-text { color: #ef4444; margin-top: 12px; }
+        .success-text { color: #10b981; margin-top: 12px; }
+      `}</style>
     </div>
   );
 }
