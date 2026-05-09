@@ -10,9 +10,7 @@ export async function POST(req: NextRequest) {
         isActive: true,
         credentialId: { not: null }
       },
-      select: {
-        credentialId: true
-      }
+      select: { credentialId: true }
     });
 
     if (allStaff.length === 0) {
@@ -21,7 +19,6 @@ export async function POST(req: NextRequest) {
 
     const challenge = crypto.randomBytes(32).toString("base64url");
 
-    // Store challenge
     await prismaclient.staff.updateMany({
       where: { credentialId: { not: null } },
       data: { setupToken: `login-challenge:${challenge}` }
@@ -32,10 +29,11 @@ export async function POST(req: NextRequest) {
       timeout: 60000,
       rpId: process.env.NEXT_PUBLIC_RP_ID,
       userVerification: "required",
-      allowCredentials: allStaff.map(staff => ({
+      allowCredentials: allStaff.map((staff) => ({
         type: "public-key",
-        id: staff.credentialId,                    // Keep as base64 string
-        transports: ["internal", "hybrid"] as const
+        // Convert base64 string to ArrayBuffer (This was the missing part)
+        id: Uint8Array.from(atob(staff.credentialId!), (c) => c.charCodeAt(0)),
+        transports: ["internal", "hybrid"] as const,
       }))
     });
 
