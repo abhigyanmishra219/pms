@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (allStaff.length === 0) {
-      return NextResponse.json({ error: "No staff with registered fingerprint" }, { status: 400 });
+      return NextResponse.json({ error: "No staff with registered fingerprint found" }, { status: 400 });
     }
 
     const challenge = crypto.randomBytes(32).toString("base64url");
@@ -31,13 +31,13 @@ export async function POST(req: NextRequest) {
       userVerification: "required",
       allowCredentials: allStaff.map((staff) => ({
         type: "public-key",
-        id: Uint8Array.from(atob(staff.credentialId!), (c) => c.charCodeAt(0)),
+        id: staff.credentialId,
         transports: ["internal", "hybrid"] as const,
       }))
     });
 
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  } catch (err: any) {
+    console.error("Options Error:", err);
+    return NextResponse.json({ error: "Server error - " + err.message }, { status: 500 });
   }
 }
