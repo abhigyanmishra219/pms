@@ -1,55 +1,46 @@
-import { NextRequest, NextResponse } from "next/server"
-import prismaclient from "@/lib/prisma"
-import crypto from "crypto"
+// src/app/api/auth/webauthn-login-options/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import prismaclient from "@/lib/prisma";
+import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
-    // Saare active staff lo jinke paas fingerprint registered hai
     const allStaff = await prismaclient.staff.findMany({
       where: {
         isActive: true,
-        credentialId: { not: null }
-      }
-    })
+        credentialId: { not: null },
+      },
+      select: {
+        id: true,
+        credentialId: true,
+      },
+    });
 
     if (allStaff.length === 0) {
-      return NextResponse.json(
-        { error: "No registered staff found" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "No staff with registered fingerprint" }, { status: 400 });
     }
 
-    const challenge = crypto.randomBytes(32).toString("base64url")
+    const challenge = crypto.randomBytes(32).toString("base64url");
 
-    // Challenge ko DB mein temporarily store karo
-    // Hum pehle staff ke record mein store karte hain
-    // (verify pe match karenge)
+    // Store challenge temporarily (you can improve this later with Redis)
     await prismaclient.staff.updateMany({
-      where: {
-        isActive: true,
-        credentialId: { not: null }
-      },
-      data: {
-        setupToken: `login::${challenge}`
-      }
-    })
+      where: { credentialId: { not: null } },
+      data: { setupToken: `login-challenge:${challenge}` },
+    });
 
     return NextResponse.json({
       challenge,
       timeout: 60000,
-      rpId: process.env.NEXT_PUBLIC_RP_ID || "localhost",
-      userVerification: "required",
-      // Saare registered staff ke credentials bhejo
-      // Browser automatically sahi wala match karega
-      allowCredentials: allStaff.map(s => ({
-        type: "public-key",
-        id: s.credentialId,
-        transports: ["internal"]
-      }))
-    })
-
+      rpId: process.env.NEXT_PUBLIC_RP_ID,
+      userVerification: "required" as const,
+      allowCredentials: allStaff.map((staff) => ({
+        type: "public-key" as const,
+        id: staff.credentialId!,
+        transports: ["internal"] as const,
+      })),
+    });
   } catch (err) {
-    console.error(err)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    console.error(err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

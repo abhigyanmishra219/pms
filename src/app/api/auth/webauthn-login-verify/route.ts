@@ -1,55 +1,84 @@
-import { NextRequest, NextResponse } from "next/server"
-import prismaclient from "@/lib/prisma"
-import { createToken } from "@/lib/jwt"
+// src/app/api/auth/webauthn-login-verify/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import prismaclient from "@/lib/prisma";
+import { createToken } from "@/lib/jwt";
+import { verifyWebAuthnLogin } from "@/lib/webauthn";
+
 
 export async function POST(req: NextRequest) {
   try {
-    const { credentialId } = await req.json()
+    const { credentialId, authenticatorData, clientDataJSON, signature } = await req.json();
 
-    // credentialId se staff dhundo
+    if (!credentialId || !authenticatorData || !clientDataJSON || !signature) {
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+    }
+
     const staff = await prismaclient.staff.findFirst({
-      where: { credentialId }
-    })
+      where: { credentialId },
+    });
 
-    if (!staff) {
-      return NextResponse.json(
-        { error: "Staff not found" },
-        { status: 401 }
-      )
+    if (!staff || !staff.isActive) {
+      return NextResponse.json({ error: "Staff not found or inactive" }, { status: 401 });
     }
 
-    if (!staff.isActive) {
-      return NextResponse.json(
-        { error: "Account not active" },
-        { status: 401 }
-      )
+    // Extract challenge from setupToken
+    const expectedChallenge = staff.setupToken?.replace("login-challenge:", "");
+
+    if (!expectedChallenge) {
+      return NextResponse.json({ error: "Challenge expired. Try again." }, { status: 401 });
     }
 
-    // JWT token banao
-    const token = createToken(staff.id )
+    // Verify WebAuthn signature
+    const isValid = await verifyWebAuthnLogin(
+      {
+        id: credentialId,
+        rawId: credentialId,
+        response: {
+          authenticatorData: new Uint8Array(authenticatorData),
+          clientDataJSON: new Uint8Array(clientDataJSON),
+          signature: new Uint8Array(signature),
+        },
+        type: "public-key",
+      },
+      expectedChallenge,
+      process.env.NEXT_PUBLIC_RP_ID || "localhost"
+    );
 
-    const res = NextResponse.json({
+    if (!isValid) {
+      return NextResponse.json({ error: "Fingerprint verification failed" }, { status: 401 });
+    }
+
+    // Create JWT
+    const token = createToken(staff.id);
+
+    const response = NextResponse.json({
       success: true,
       staff: {
         id: staff.id,
         name: staff.name,
         email: staff.email,
-        role: staff.role
-      }
-    })
+        role: staff.role,
+      },
+    });
 
-    // Cookie set karo
-    res.cookies.set("staff-token", token, {
+    response.cookies.set("staff-token", token, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      secure: false,
       path: "/",
-    })
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
 
-    return res
+    // Clear challenge
+    await prismaclient.staff.update({
+      where: { id: staff.id },
+      data: { setupToken: null },
+    });
+
+    return response;
 
   } catch (err) {
-    console.error(err)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    console.error(err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
