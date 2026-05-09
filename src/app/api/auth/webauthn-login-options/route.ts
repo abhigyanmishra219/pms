@@ -8,12 +8,11 @@ export async function POST(req: NextRequest) {
     const allStaff = await prismaclient.staff.findMany({
       where: {
         isActive: true,
-        credentialId: { not: null },
+        credentialId: { not: null }
       },
       select: {
-        id: true,
-        credentialId: true,
-      },
+        credentialId: true
+      }
     });
 
     if (allStaff.length === 0) {
@@ -22,23 +21,24 @@ export async function POST(req: NextRequest) {
 
     const challenge = crypto.randomBytes(32).toString("base64url");
 
-    // Store challenge temporarily (you can improve this later with Redis)
+    // Store challenge
     await prismaclient.staff.updateMany({
       where: { credentialId: { not: null } },
-      data: { setupToken: `login-challenge:${challenge}` },
+      data: { setupToken: `login-challenge:${challenge}` }
     });
 
     return NextResponse.json({
       challenge,
       timeout: 60000,
       rpId: process.env.NEXT_PUBLIC_RP_ID,
-      userVerification: "required" as const,
-      allowCredentials: allStaff.map((staff) => ({
-        type: "public-key" as const,
-        id: staff.credentialId!,
-        transports: ["internal"] as const,
-      })),
+      userVerification: "required",
+      allowCredentials: allStaff.map(staff => ({
+        type: "public-key",
+        id: staff.credentialId,                    // Keep as base64 string
+        transports: ["internal", "hybrid"] as const
+      }))
     });
+
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
