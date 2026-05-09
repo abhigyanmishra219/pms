@@ -19,26 +19,48 @@ export async function POST(req: NextRequest) {
 
     const challenge = crypto.randomBytes(32).toString("base64url");
 
+    // Store challenge for verification
     await prismaclient.staff.updateMany({
       where: { credentialId: { not: null } },
       data: { setupToken: `login:${challenge}` }
     });
+
+    const allowCredentials = allStaff
+      .map((staff) => {
+        try {
+          // Safe base64 to Uint8Array conversion
+          let base64 = staff.credentialId!;
+          base64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+          while (base64.length % 4) base64 += '=';
+          
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          return {
+            type: "public-key" as const,
+            id: bytes,
+            transports: ["internal", "hybrid"] as const,
+          };
+        } catch (e) {
+          console.warn("Skipped invalid credentialId:", staff.credentialId);
+          return null;
+        }
+      })
+      .filter(Boolean);
 
     return NextResponse.json({
       challenge,
       rpId: process.env.NEXT_PUBLIC_RP_ID,
       timeout: 60000,
       userVerification: "required",
-      allowCredentials: allStaff.map((staff) => ({
-        type: "public-key",
-        // This is the critical fix
-        id: Uint8Array.from(atob(staff.credentialId!), (c) => c.charCodeAt(0)),
-        transports: ["internal", "hybrid"] as const,
-      }))
+      allowCredentials,
     });
 
   } catch (err: any) {
-    console.error(err);
+    console.error("Options Error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
