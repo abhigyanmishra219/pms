@@ -8,18 +8,17 @@ export async function POST(req: NextRequest) {
     const { credentialId } = await req.json();
 
     if (!credentialId) {
-      return NextResponse.json({ error: "Missing credential" }, { status: 400 });
+      return NextResponse.json({ error: "Missing credential ID" }, { status: 400 });
     }
 
     const staff = await prismaclient.staff.findFirst({
-      where: { credentialId },
+      where: { credentialId }
     });
 
     if (!staff || !staff.isActive) {
       return NextResponse.json({ error: "Invalid staff account" }, { status: 401 });
     }
 
-    // Create token
     const token = createToken(staff.id);
 
     const response = NextResponse.json({
@@ -43,13 +42,13 @@ export async function POST(req: NextRequest) {
     // Clear challenge
     await prismaclient.staff.update({
       where: { id: staff.id },
-      data: { setupToken: null },
+      data: { setupToken: null }
     });
 
     return response;
 
-  } catch (err: any) {
-    console.error("Verify Error:", err);
-    return NextResponse.json({ error: "Server error: " + err.message }, { status: 500 });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

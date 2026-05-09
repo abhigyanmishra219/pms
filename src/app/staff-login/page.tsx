@@ -3,133 +3,69 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Status = "idle" | "loading" | "error" | "success";
-
 export default function StaffLoginPage() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error" | "success">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
-  const startFingerprintLogin = async () => {
+  const loginWithFingerprint = async () => {
     setStatus("loading");
     setErrorMsg("");
 
     try {
-      // 1. Get challenge and credentials from server
-      const optionsRes = await fetch("/api/auth/webauthn-login-options", {
-        method: "POST",
-      });
+      const res = await fetch("/api/auth/webauthn-login-options", { method: "POST" });
+      const options = await res.json();
 
-      const options = await optionsRes.json();
+      if (!res.ok) throw new Error(options.error || "Failed to start");
 
-      if (!optionsRes.ok) {
-        throw new Error(options.error || "Failed to prepare fingerprint login");
-      }
-
-      // 2. Trigger Fingerprint / Passkey Prompt
       const credential = await navigator.credentials.get({
         publicKey: {
-          challenge: Uint8Array.from(atob(options.challenge), (c) => c.charCodeAt(0)),
-          timeout: options.timeout,
+          challenge: Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0)),
           rpId: options.rpId,
+          timeout: options.timeout,
           allowCredentials: options.allowCredentials,
-          userVerification: "required",
-        },
-      }) as PublicKeyCredential | null;
+          userVerification: "required"
+        }
+      }) as PublicKeyCredential;
 
-      if (!credential) {
-        throw new Error("Fingerprint authentication was cancelled or failed");
-      }
-
-      // 3. Send response for verification
       const verifyRes = await fetch("/api/auth/webauthn-login-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          credentialId: credential.id,
-          authenticatorData: Array.from(new Uint8Array((credential.response as AuthenticatorAssertionResponse).authenticatorData)),
-          clientDataJSON: Array.from(new Uint8Array((credential.response as AuthenticatorAssertionResponse).clientDataJSON)),
-          signature: Array.from(new Uint8Array((credential.response as AuthenticatorAssertionResponse).signature)),
-        }),
+        body: JSON.stringify({ credentialId: credential.id })
       });
 
       const data = await verifyRes.json();
 
       if (data.success) {
         setStatus("success");
-        setTimeout(() => {
-          router.push("/staff/dashboard");
-        }, 800);
+        setTimeout(() => router.push("/staff/dashboard"), 800);
       } else {
         throw new Error(data.error || "Verification failed");
       }
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Could not access fingerprint sensor. Please try again.");
+      setErrorMsg(err.message || "Fingerprint login failed");
       setStatus("error");
     }
   };
 
   return (
-    <div className="root">
-      <div className="bg-noise" />
-      <div className="orb orb-1" />
-      <div className="orb orb-2" />
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-gray-900 rounded-2xl p-8 text-center border border-gray-800">
+        <div className="text-5xl mb-6">🔐</div>
+        <h1 className="text-2xl font-bold text-white mb-2">Staff Portal</h1>
+        <p className="text-gray-400 mb-8">Touch your fingerprint to login</p>
 
-      <main className="card">
-        <div className="accent-bar" />
+        <button
+          onClick={loginWithFingerprint}
+          disabled={status === "loading"}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white py-4 rounded-xl font-semibold text-lg transition-all"
+        >
+          {status === "loading" ? "Verifying..." : "Verify with Fingerprint"}
+        </button>
 
-        <div className="icon-ring">
-          <svg width="44" height="44" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M24 10C16.268 10 10 16.268 10 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M24 15C19.029 15 15 19.029 15 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M24 20C21.239 20 19 22.239 19 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <circle cx="24" cy="24" r="2.5" fill="currentColor"/>
-            <path d="M24 29C26.761 29 29 26.761 29 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M24 34C28.971 34 33 29.971 33 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M24 38C31.732 38 38 31.732 38 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        </div>
-
-        <div className="heading-block">
-          <span className="badge">STAFF PORTAL</span>
-          <h1 className="title">Identity Verification</h1>
-          <p className="subtitle">Touch your fingerprint sensor to login</p>
-        </div>
-
-        <div className="field-wrap">
-          <button
-            className={`btn ${status === "loading" ? "btn-loading" : ""}`}
-            onClick={startFingerprintLogin}
-            disabled={status === "loading" || status === "success"}
-          >
-            {status === "loading" ? (
-              <>
-                <span className="spinner" />
-                Verifying Fingerprint...
-              </>
-            ) : (
-              "🔐 Verify with Fingerprint"
-            )}
-          </button>
-
-          {status === "error" && <p className="err-text">{errorMsg}</p>}
-          {status === "success" && <p className="success-text">✅ Login Successful! Redirecting...</p>}
-        </div>
-
-        <p className="hint">
-          Credentials managed by admin • Contact admin for access issues
-        </p>
-      </main>
-
-      <style jsx>{`
-        .root { min-height: 100vh; background: #04080f; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 20px; }
-        .card { width: 430px; background: rgba(10,18,30,0.95); border-radius: 20px; padding: 20px; text-align: center; box-shadow: 0 40px 100px rgba(0,0,0,0.8); }
-        .btn { width: 100%; padding: 14px; background: #6366f1; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }
-        .btn-loading { opacity: 0.7; cursor: not-allowed; }
-        .err-text { color: #ef4444; margin-top: 12px; text-align: center; }
-        .success-text { color: #10b981; margin-top: 12px; text-align: center; }
-      `}</style>
+        {status === "error" && <p className="text-red-500 mt-4">{errorMsg}</p>}
+        {status === "success" && <p className="text-green-500 mt-4">Login Successful! Redirecting...</p>}
+      </div>
     </div>
   );
 }
