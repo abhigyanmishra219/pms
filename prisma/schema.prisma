@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma/schema.prisma
 
 generator client {
   provider      = "prisma-client-js"
@@ -13,6 +9,8 @@ datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")
 }
+
+// Manager / Admin
 model User {
   id       String   @id @default(auto()) @map("_id") @db.ObjectId
   name     String
@@ -22,38 +20,33 @@ model User {
 }
 
 enum RoleType {
-  
-  
   manager
 }
+
+// Staff with Fingerprint Support
 model Staff {
-  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
 
-  // Basic
-  name     String
-  email    String   @unique
-  password String
+  name        String
+  email       String   @unique
+  password    String?
 
-  // Role
-  role     RoleTypes @default(worker)
+  role        RoleTypes @default(worker)
 
-  // 🔐 QR setup system
-  setupToken   String?   
-  tokenExpiry  DateTime?
-
-  // 🖐️ Fingerprint (WebAuthn)
-  credentialId String?
+  // WebAuthn Fields
+  credentialId String?   @unique   // ← Important: Make it unique
   publicKey    String?
 
-  // Status
-  isActive     Boolean?   @default(true)
+  // Login Session
+  setupToken   String?
+  tokenExpiry  DateTime?
 
-  // Timestamps
-  createdAt    DateTime?  @default(now())
-  updatedAt    DateTime?  @updatedAt
+  isActive     Boolean?  @default(true)
+
+  createdAt    DateTime? @default(now())
+  updatedAt    DateTime? @updatedAt
 }
 
 enum RoleTypes {
- 
   worker
 }
